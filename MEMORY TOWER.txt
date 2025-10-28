@@ -1,0 +1,642 @@
+import React, { useState, useEffect } from 'react';
+
+const MemoryTowerHanoi = () => {
+  const [numDiscs, setNumDiscs] = useState(3);
+  const [gameState, setGameState] = useState('setup');
+  const [difficulty, setDifficulty] = useState('easy');
+  const [towers, setTowers] = useState([[], [], []]);
+  const [moves, setMoves] = useState([]);
+  const [helpCount, setHelpCount] = useState(0);
+  const [startTime, setStartTime] = useState(null);
+  const [elapsedTime, setElapsedTime] = useState(0);
+  const [inputDisc, setInputDisc] = useState('');
+  const [inputStick, setInputStick] = useState('');
+  const [isPracticeMode, setIsPracticeMode] = useState(false);
+  const [practiceTowers, setPracticeTowers] = useState([[], [], []]);
+  const [errorRows, setErrorRows] = useState([]);
+  const [records, setRecords] = useState({});
+  const [completedLevels, setCompletedLevels] = useState([]);
+
+  useEffect(() => {
+    if (gameState === 'playing' && startTime) {
+      const interval = setInterval(() => {
+        setElapsedTime(Math.floor((Date.now() - startTime) / 1000));
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [gameState, startTime]);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const initializeTowers = () => {
+    const initialTowers = [
+      Array.from({ length: numDiscs }, (_, i) => numDiscs - i),
+      [],
+      []
+    ];
+    setTowers(initialTowers);
+  };
+
+  const handleStart = () => {
+    initializeTowers();
+    setGameState('preview');
+  };
+
+  const handleBeginGame = () => {
+    setGameState('playing');
+    setHelpCount(numDiscs);
+    setMoves([]);
+    setStartTime(Date.now());
+    setElapsedTime(0);
+    setIsPracticeMode(false);
+    setPracticeTowers([
+      Array.from({ length: numDiscs }, (_, i) => numDiscs - i),
+      [],
+      []
+    ]);
+  };
+
+  const applyMoves = () => {
+    const resultTowers = [
+      Array.from({ length: numDiscs }, (_, i) => numDiscs - i),
+      [],
+      []
+    ];
+
+    for (const move of moves) {
+      const disc = move.disc;
+      let fromTower = -1;
+      for (let i = 0; i < 3; i++) {
+        const index = resultTowers[i].indexOf(disc);
+        if (index !== -1) {
+          fromTower = i;
+          resultTowers[i].splice(index, 1);
+          break;
+        }
+      }
+      resultTowers[move.to].push(disc);
+    }
+    return resultTowers;
+  };
+
+  const handleHelp = () => {
+    if (helpCount > 0) {
+      setHelpCount(helpCount - 1);
+      const currentTowers = applyMoves();
+      setTowers(currentTowers);
+      setGameState('preview');
+    }
+  };
+
+  const updatePracticeTowers = (movesList) => {
+    const resultTowers = [
+      Array.from({ length: numDiscs }, (_, i) => numDiscs - i),
+      [],
+      []
+    ];
+
+    for (const move of movesList) {
+      const disc = move.disc;
+      let fromTower = -1;
+      for (let i = 0; i < 3; i++) {
+        const index = resultTowers[i].indexOf(disc);
+        if (index !== -1) {
+          fromTower = i;
+          resultTowers[i].splice(index, 1);
+          break;
+        }
+      }
+      resultTowers[move.to].push(disc);
+    }
+    setPracticeTowers(resultTowers);
+  };
+
+  const handleEditMove = (index, field, value) => {
+    const num = parseInt(value);
+    let isValid = false;
+    
+    if (field === 'disc') {
+      isValid = !isNaN(num) && num >= 1 && num <= numDiscs;
+    } else if (field === 'stick') {
+      isValid = !isNaN(num) && num >= 1 && num <= 3;
+    }
+    
+    if (isValid) {
+      const newMoves = [...moves];
+      if (field === 'disc') {
+        newMoves[index].disc = num;
+      } else if (field === 'stick') {
+        newMoves[index].to = num - 1;
+      }
+      setMoves(newMoves);
+      setErrorRows(errorRows.filter(i => i !== index));
+      if (isPracticeMode) {
+        updatePracticeTowers(newMoves);
+      }
+    } else {
+      if (!errorRows.includes(index)) {
+        setErrorRows([...errorRows, index]);
+      }
+    }
+  };
+
+  const togglePracticeMode = () => {
+    const newMode = !isPracticeMode;
+    setIsPracticeMode(newMode);
+    if (newMode) {
+      updatePracticeTowers(moves);
+    }
+  };
+
+  const checkWin = () => {
+    const resultTowers = applyMoves();
+    if (resultTowers[2].length !== numDiscs) {
+      return false;
+    }
+    for (let i = 0; i < resultTowers[2].length; i++) {
+      if (resultTowers[2][i] !== numDiscs - i) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const handleDone = () => {
+    const resultTowers = applyMoves();
+    setTowers(resultTowers);
+    
+    if (checkWin()) {
+      const levelKey = `${numDiscs}-${difficulty}`;
+      const helpUsed = numDiscs - helpCount;
+      
+      if (!completedLevels.includes(levelKey)) {
+        setCompletedLevels([...completedLevels, levelKey]);
+      }
+      
+      const currentRecord = records[levelKey] || {
+        bestMoves: Infinity,
+        bestTime: Infinity,
+        bestHelp: Infinity
+      };
+      
+      const newRecord = {
+        bestMoves: Math.min(currentRecord.bestMoves, moves.length),
+        bestTime: Math.min(currentRecord.bestTime, elapsedTime),
+        bestHelp: Math.min(currentRecord.bestHelp, helpUsed)
+      };
+      
+      setRecords({
+        ...records,
+        [levelKey]: newRecord
+      });
+    }
+    
+    setGameState('result');
+  };
+
+  const handleReset = () => {
+    setGameState('setup');
+    setTowers([[], [], []]);
+    setMoves([]);
+    setHelpCount(0);
+    setStartTime(null);
+    setElapsedTime(0);
+    setErrorRows([]);
+  };
+
+  const TowerDisplay = () => (
+    <div className="flex justify-center gap-2 sm:gap-8 mb-4 sm:mb-8 overflow-x-auto">
+      {towers.map((tower, towerIndex) => (
+        <div key={towerIndex} className="flex flex-col items-center">
+          <div className="text-base sm:text-xl font-bold mb-2 sm:mb-4">Stick {towerIndex + 1}</div>
+          <div className="relative w-24 sm:w-40 h-40 sm:h-64 bg-gray-100 border-2 sm:border-4 border-gray-400 rounded-lg flex flex-col-reverse items-center pb-2 sm:pb-4">
+            <div className="absolute w-1 sm:w-2 h-full bg-gray-800 bottom-0 left-1/2 transform -translate-x-1/2" style={{zIndex: 0}} />
+            {tower.map((disc, discIndex) => {
+              const width = 15 + disc * 15;
+              const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-orange-500'];
+              return (
+                <div
+                  key={discIndex}
+                  className={`h-5 sm:h-8 ${colors[disc - 1]} rounded mb-1 relative flex items-center justify-center text-white text-sm sm:text-base font-bold`}
+                  style={{ width: `${width}px`, zIndex: 10 }}
+                >
+                  {disc}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  const ReferenceDisplay = () => {
+    if (difficulty === 'hard') {
+      return null;
+    }
+    
+    const displayTowers = difficulty === 'easy' 
+      ? [Array.from({ length: numDiscs }, (_, i) => numDiscs - i), [], []]
+      : [[], [], []];
+    
+    return (
+      <div className="mb-3 sm:mb-6 bg-blue-50 p-2 sm:p-4 rounded-lg">
+        <h3 className="text-base sm:text-xl font-bold text-center mb-2 sm:mb-4 text-blue-600">
+          {difficulty === 'easy' ? 'Reference - Starting Position' : 'Reference - Empty Towers'}
+        </h3>
+        <div className="flex justify-center gap-2 sm:gap-8 overflow-x-auto">
+          {displayTowers.map((tower, towerIndex) => (
+            <div key={towerIndex} className="flex flex-col items-center">
+              <div className="text-sm sm:text-lg font-bold mb-1 sm:mb-2">Stick {towerIndex + 1}</div>
+              <div className="relative w-20 sm:w-32 h-32 sm:h-48 bg-gray-100 border-2 border-gray-400 rounded-lg flex flex-col-reverse items-center pb-1 sm:pb-2">
+                <div className="absolute w-1 h-full bg-gray-800 bottom-0 left-1/2 transform -translate-x-1/2" style={{zIndex: 0}} />
+                {tower.map((disc, discIndex) => {
+                  const width = 10 + disc * 10;
+                  const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-orange-500'];
+                  return (
+                    <div
+                      key={discIndex}
+                      className={`h-4 sm:h-6 ${colors[disc - 1]} rounded mb-1 relative flex items-center justify-center text-white text-xs sm:text-sm font-bold`}
+                      style={{ width: `${width}px`, zIndex: 10 }}
+                    >
+                      {disc}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  if (gameState === 'setup') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 p-2 sm:p-8 flex items-center justify-center">
+        <div className="max-w-6xl w-full flex flex-col lg:flex-row gap-4 sm:gap-8">
+          <div className="bg-white rounded-3xl shadow-2xl p-4 sm:p-12 flex-1">
+            <h1 className="text-2xl sm:text-4xl font-bold text-center mb-4 sm:mb-8 text-purple-600">Memory Tower of Hanoi</h1>
+            <div className="space-y-4 sm:space-y-6">
+              <div>
+                <label className="block text-lg sm:text-xl font-bold mb-2 sm:mb-4 text-gray-700">Select Number of Discs:</label>
+                <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                  {[3, 4, 5, 6, 7].map(num => (
+                    <button
+                      key={num}
+                      onClick={() => setNumDiscs(num)}
+                      className={`py-3 sm:py-4 px-4 sm:px-6 rounded-lg text-xl sm:text-2xl font-bold transition-all ${
+                        numDiscs === num 
+                          ? 'bg-purple-600 text-white scale-110' 
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      {num}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <div>
+                <label className="block text-lg sm:text-xl font-bold mb-2 sm:mb-4 text-gray-700">Select Difficulty:</label>
+                <div className="space-y-2 sm:space-y-3">
+                  {['easy', 'medium', 'hard'].map(diff => (
+                    <button
+                      key={diff}
+                      onClick={() => setDifficulty(diff)}
+                      className={`w-full py-2 sm:py-3 px-4 sm:px-6 rounded-lg text-lg sm:text-xl font-bold transition-all capitalize ${
+                        difficulty === diff
+                          ? (diff === 'easy' ? 'bg-green-500' : diff === 'medium' ? 'bg-yellow-500' : 'bg-red-500') + ' text-white'
+                          : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                      }`}
+                    >
+                      {diff.toUpperCase()} - {diff === 'easy' ? 'See all discs' : diff === 'medium' ? 'Empty towers' : 'No image'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              
+              <button
+                onClick={handleStart}
+                className="w-full bg-green-500 text-white py-3 sm:py-4 rounded-lg text-xl sm:text-2xl font-bold hover:bg-green-600 transition-all"
+              >
+                START
+              </button>
+            </div>
+          </div>
+          
+          <div className="bg-white rounded-3xl shadow-2xl p-4 sm:p-8 lg:w-96">
+            <h2 className="text-2xl sm:text-3xl font-bold text-center mb-4 sm:mb-6 text-purple-600">Records</h2>
+            <div className="space-y-3 sm:space-y-4 max-h-64 sm:max-h-96 overflow-y-auto">
+              {[3, 4, 5, 6, 7].map(disc => (
+                <div key={disc} className="border-2 border-gray-200 rounded-lg p-3 sm:p-4">
+                  <h3 className="text-lg sm:text-xl font-bold mb-1 sm:mb-2 text-gray-700">{disc} Discs</h3>
+                  {['easy', 'medium', 'hard'].map(diff => {
+                    const levelKey = `${disc}-${diff}`;
+                    const isCompleted = completedLevels.includes(levelKey);
+                    const record = records[levelKey];
+                    const diffColor = diff === 'easy' ? 'text-green-600' : diff === 'medium' ? 'text-yellow-600' : 'text-red-600';
+                    
+                    return (
+                      <div key={diff} className={`text-xs sm:text-sm mt-2 p-2 rounded ${isCompleted ? 'bg-green-50' : 'bg-gray-50'}`}>
+                        <div className="flex items-center justify-between">
+                          <span className={`font-bold ${diffColor} capitalize`}>{diff}</span>
+                          {isCompleted && <span className="text-green-600 text-lg sm:text-xl">✓</span>}
+                        </div>
+                        {record && (
+                          <div className="text-xs mt-1 text-gray-600">
+                            <div>Moves: {record.bestMoves}</div>
+                            <div>Time: {formatTime(record.bestTime)}</div>
+                            <div>Help: {record.bestHelp}</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'preview') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 p-8">
+        <div className="max-w-6xl mx-auto">
+          <h1 className="text-4xl font-bold text-center mb-8 text-purple-600">
+            {moves.length === 0 ? 'Preview - Memorize the Tower!' : 'Help View - Your Current Progress!'}
+          </h1>
+          <TowerDisplay />
+          <div className="text-center">
+            <button
+              onClick={() => {
+                if (moves.length === 0) {
+                  handleBeginGame();
+                } else {
+                  setGameState('playing');
+                }
+              }}
+              className="bg-green-500 text-white px-12 py-4 rounded-lg text-2xl font-bold hover:bg-green-600"
+            >
+              {moves.length === 0 ? 'BEGIN GAME' : 'RETURN TO GAME'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'playing') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 p-2 sm:p-8">
+        <div className="max-w-6xl mx-auto">
+          <div className="bg-white rounded-3xl shadow-2xl p-3 sm:p-8 mb-4 sm:mb-8">
+            <h1 className="text-xl sm:text-4xl font-bold text-center mb-3 sm:mb-6 text-purple-600">Playing - {numDiscs} Discs - {difficulty.toUpperCase()}</h1>
+            <div className="flex justify-around text-sm sm:text-xl font-bold mb-3 sm:mb-6">
+              <div className="text-blue-600">Time: {formatTime(elapsedTime)}</div>
+              <div className="text-green-600">Moves: {moves.length}</div>
+              <div className="text-orange-600">Help: {helpCount}</div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-2xl p-3 sm:p-8 mb-4 sm:mb-8">
+            <div className="flex justify-between items-center mb-3 sm:mb-6">
+              <h2 className="text-lg sm:text-2xl font-bold">Your Moves:</h2>
+              <button
+                onClick={togglePracticeMode}
+                className={`px-3 sm:px-6 py-2 sm:py-3 rounded-lg text-sm sm:text-xl font-bold transition-all ${
+                  isPracticeMode
+                    ? 'bg-green-500 text-white'
+                    : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
+                }`}
+              >
+                {isPracticeMode ? '👁️ ON' : '👁️ OFF'}
+              </button>
+            </div>
+            
+            <ReferenceDisplay />
+            
+            {isPracticeMode && (
+              <div className="mb-3 sm:mb-6 bg-blue-50 p-2 sm:p-4 rounded-lg">
+                <h3 className="text-base sm:text-xl font-bold text-center mb-2 sm:mb-4 text-blue-600">Practice View</h3>
+                <div className="flex justify-center gap-2 sm:gap-8 overflow-x-auto">
+                  {practiceTowers.map((tower, towerIndex) => (
+                    <div key={towerIndex} className="flex flex-col items-center">
+                      <div className="text-sm sm:text-lg font-bold mb-1 sm:mb-2">Stick {towerIndex + 1}</div>
+                      <div className="relative w-20 sm:w-32 h-32 sm:h-48 bg-gray-100 border-2 border-gray-400 rounded-lg flex flex-col-reverse items-center pb-1 sm:pb-2">
+                        <div className="absolute w-1 h-full bg-gray-800 bottom-0 left-1/2 transform -translate-x-1/2" style={{zIndex: 0}} />
+                        {tower.map((disc, discIndex) => {
+                          const width = 10 + disc * 10;
+                          const colors = ['bg-red-500', 'bg-blue-500', 'bg-green-500', 'bg-yellow-500', 'bg-purple-500', 'bg-pink-500', 'bg-orange-500'];
+                          return (
+                            <div
+                              key={discIndex}
+                              className={`h-4 sm:h-6 ${colors[disc - 1]} rounded mb-1 relative flex items-center justify-center text-white text-xs sm:text-sm font-bold`}
+                              style={{ width: `${width}px`, zIndex: 10 }}
+                            >
+                              {disc}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            <div className="mb-3 sm:mb-6 overflow-x-auto">
+              <table className="w-full border-collapse">
+                <thead>
+                  <tr className="bg-gray-200">
+                    <th className="border-2 border-gray-400 p-2 sm:p-4 text-base sm:text-2xl font-bold">DISK</th>
+                    <th className="border-2 border-gray-400 p-2 sm:p-4 text-base sm:text-2xl font-bold">TO</th>
+                    <th className="border-2 border-gray-400 p-2 sm:p-4 text-base sm:text-2xl font-bold">STICK</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {moves.map((move, index) => {
+                    const hasError = errorRows.includes(index);
+                    return (
+                      <tr key={index} className={`bg-white hover:bg-gray-50 ${hasError ? 'bg-red-50' : ''}`}>
+                        <td className="border-2 border-gray-400 p-1 sm:p-2 relative">
+                          {hasError && (
+                            <div className="absolute top-1 right-1 text-red-500 text-base sm:text-xl">⚠️</div>
+                          )}
+                          <input
+                            type="text"
+                            maxLength="1"
+                            value={move.disc}
+                            onChange={(e) => handleEditMove(index, 'disc', e.target.value)}
+                            className={`w-full text-center text-lg sm:text-2xl font-bold border rounded p-1 ${
+                              hasError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                            } text-blue-600`}
+                          />
+                        </td>
+                        <td className="border-2 border-gray-400 p-2 sm:p-4 text-center text-base sm:text-xl font-bold text-gray-500">TO</td>
+                        <td className="border-2 border-gray-400 p-1 sm:p-2 relative">
+                          {hasError && (
+                            <div className="absolute top-1 right-1 text-red-500 text-base sm:text-xl">⚠️</div>
+                          )}
+                          <input
+                            type="text"
+                            maxLength="1"
+                            value={move.to + 1}
+                            onChange={(e) => handleEditMove(index, 'stick', e.target.value)}
+                            className={`w-full text-center text-lg sm:text-2xl font-bold border rounded p-1 ${
+                              hasError ? 'border-red-500 bg-red-50' : 'border-gray-300'
+                            } text-green-600`}
+                          />
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  <tr className="bg-yellow-50">
+                    <td className="border-2 border-gray-400 p-1 sm:p-2">
+                      <div className="text-center text-2xl sm:text-4xl font-bold text-blue-600 p-1 sm:p-2">
+                        {inputDisc || '?'}
+                      </div>
+                    </td>
+                    <td className="border-2 border-gray-400 p-2 sm:p-4 text-center text-base sm:text-xl font-bold text-gray-500">TO</td>
+                    <td className="border-2 border-gray-400 p-1 sm:p-2">
+                      <div className="text-center text-2xl sm:text-4xl font-bold text-green-600 p-1 sm:p-2">
+                        {inputStick || '?'}
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mb-3 sm:mb-6 bg-gray-50 p-3 sm:p-6 rounded-lg">
+              <div className="flex justify-center gap-2 sm:gap-4">
+                {Array.from({ length: numDiscs }, (_, i) => i + 1).map(num => (
+                  <button
+                    key={num}
+                    onClick={() => {
+                      if (!inputDisc) {
+                        setInputDisc(num.toString());
+                      } else {
+                        const discNum = parseInt(inputDisc);
+                        const stickNum = num;
+                        const move = { disc: discNum, to: stickNum - 1 };
+                        const newMoves = [...moves, move];
+                        setMoves(newMoves);
+                        
+                        if (isPracticeMode) {
+                          updatePracticeTowers(newMoves);
+                        }
+                        
+                        setInputDisc('');
+                        setInputStick('');
+                      }
+                    }}
+                    className="w-14 h-14 sm:w-20 sm:h-20 bg-blue-500 text-white text-2xl sm:text-3xl font-bold rounded-lg hover:bg-blue-600 transition-all transform active:scale-95 shadow-lg"
+                  >
+                    {num}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-wrap justify-center gap-2 sm:gap-4">
+              <button
+                onClick={handleHelp}
+                disabled={helpCount === 0}
+                className={`px-4 sm:px-8 py-2 sm:py-4 rounded-lg text-lg sm:text-2xl font-bold ${
+                  helpCount === 0
+                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                    : 'bg-orange-500 text-white hover:bg-orange-600'
+                }`}
+              >
+                HELP ({helpCount})
+              </button>
+              <button
+                onClick={() => {
+                  setMoves([]);
+                  setInputDisc('');
+                  setInputStick('');
+                  setErrorRows([]);
+                  setIsPracticeMode(false);
+                  setPracticeTowers([
+                    Array.from({ length: numDiscs }, (_, i) => numDiscs - i),
+                    [],
+                    []
+                  ]);
+                }}
+                className="bg-yellow-500 text-white px-4 sm:px-8 py-2 sm:py-4 rounded-lg text-lg sm:text-2xl font-bold hover:bg-yellow-600"
+              >
+                RESET
+              </button>
+              <button
+                onClick={handleDone}
+                className="bg-purple-600 text-white px-6 sm:px-12 py-2 sm:py-4 rounded-lg text-lg sm:text-2xl font-bold hover:bg-purple-700"
+              >
+                DONE
+              </button>
+              <button
+                onClick={handleReset}
+                className="bg-gray-600 text-white px-4 sm:px-8 py-2 sm:py-4 rounded-lg text-lg sm:text-2xl font-bold hover:bg-gray-700"
+              >
+                MENU
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (gameState === 'result') {
+    const isWin = checkWin();
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-100 to-purple-100 p-8">
+        <div className="max-w-6xl mx-auto">
+          <div className={`rounded-3xl shadow-2xl p-12 mb-8 text-center ${isWin ? 'bg-green-100' : 'bg-red-100'}`}>
+            <h1 className={`text-5xl font-bold mb-6 ${isWin ? 'text-green-600' : 'text-red-600'}`}>
+              {isWin ? '🎉 SUCCESS! 🎉' : '❌ NOT QUITE! ❌'}
+            </h1>
+            <div className="text-2xl font-bold space-y-3">
+              <p>Time Taken: {formatTime(elapsedTime)}</p>
+              <p>Total Moves: {moves.length}</p>
+              <p>Help Used: {numDiscs - helpCount} times</p>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl shadow-2xl p-8 mb-8">
+            <h2 className="text-3xl font-bold text-center mb-6 text-purple-600">Your Result:</h2>
+            <TowerDisplay />
+          </div>
+
+          <div className="text-center flex justify-center gap-4">
+            {!isWin && (
+              <button
+                onClick={() => {
+                  setGameState('playing');
+                }}
+                className="bg-orange-500 text-white px-12 py-4 rounded-lg text-2xl font-bold hover:bg-orange-600"
+              >
+                TRY AGAIN
+              </button>
+            )}
+            <button
+              onClick={handleReset}
+              className="bg-blue-500 text-white px-12 py-4 rounded-lg text-2xl font-bold hover:bg-blue-600"
+            >
+              {isWin ? 'PLAY AGAIN' : 'START OVER'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+};
+
+export default MemoryTowerHanoi;
